@@ -1,6 +1,7 @@
 /*
  * Benchmark for testing whether Tinypool's worker creation and teardown is expensive.
  */
+import { fork } from 'node:child_process'
 import { cpus } from 'node:os'
 import { Worker } from 'node:worker_threads'
 
@@ -11,6 +12,7 @@ const ROUNDS = 5_000
 
 await logTime('Tinypool', runTinypool)
 await logTime('Worker threads', runWorkerThreads)
+await logTime('Child process', runChildProcesses)
 
 async function runTinypool() {
   const pool = new Tinypool({
@@ -37,6 +39,41 @@ async function runWorkerThreads() {
     )
 
     await worker.terminate()
+  }
+
+  const pool = Array(ROUNDS).fill(task)
+
+  async function execute() {
+    const task = pool.shift()
+
+    if (task) {
+      await task()
+      return execute()
+    }
+  }
+
+  await Promise.all(
+    Array(THREADS)
+      .fill(execute)
+      .map((task) => task())
+  )
+}
+
+async function runChildProcesses() {
+  async function task() {
+    const subprocess = fork('./fixtures/process-wrap-add.mjs')
+    subprocess.send({ a: 1, b: 2 })
+
+    await new Promise((resolve, reject) =>
+      subprocess.on('message', (sum) =>
+        sum === 3 ? resolve() : reject('Not 3')
+      )
+    )
+    const killed = new Promise((resolve) => subprocess.on('exit', resolve))
+
+    subprocess.kill()
+
+    await killed
   }
 
   const pool = Array(ROUNDS).fill(task)
