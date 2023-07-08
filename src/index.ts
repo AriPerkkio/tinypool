@@ -6,6 +6,10 @@ import {
 } from 'worker_threads'
 import { once } from 'events'
 import EventEmitterAsyncResource from './EventEmitterAsyncResource'
+import {
+  AsynchronouslyCreatedResource,
+  AsynchronouslyCreatedResourcePool,
+} from './AsyncResource'
 import { AsyncResource } from 'async_hooks'
 import { fileURLToPath, URL } from 'url'
 import { dirname, join, resolve } from 'path'
@@ -327,100 +331,6 @@ class TaskInfo extends AsyncResource implements Task {
 
   get [kQueueOptions](): object | null {
     return kQueueOptions in this.task ? this.task[kQueueOptions] : null
-  }
-}
-
-abstract class AsynchronouslyCreatedResource {
-  onreadyListeners: (() => void)[] | null = []
-
-  markAsReady(): void {
-    const listeners = this.onreadyListeners
-    assert(listeners !== null)
-    this.onreadyListeners = null
-    for (const listener of listeners) {
-      listener()
-    }
-  }
-
-  isReady(): boolean {
-    return this.onreadyListeners === null
-  }
-
-  onReady(fn: () => void) {
-    if (this.onreadyListeners === null) {
-      fn() // Zalgo is okay here.
-      return
-    }
-    this.onreadyListeners.push(fn)
-  }
-
-  abstract currentUsage(): number
-}
-
-class AsynchronouslyCreatedResourcePool<
-  T extends AsynchronouslyCreatedResource
-> {
-  pendingItems = new Set<T>()
-  readyItems = new Set<T>()
-  maximumUsage: number
-  onAvailableListeners: ((item: T) => void)[]
-
-  constructor(maximumUsage: number) {
-    this.maximumUsage = maximumUsage
-    this.onAvailableListeners = []
-  }
-
-  add(item: T) {
-    this.pendingItems.add(item)
-    item.onReady(() => {
-      /* istanbul ignore else */
-      if (this.pendingItems.has(item)) {
-        this.pendingItems.delete(item)
-        this.readyItems.add(item)
-        this.maybeAvailable(item)
-      }
-    })
-  }
-
-  delete(item: T) {
-    this.pendingItems.delete(item)
-    this.readyItems.delete(item)
-  }
-
-  findAvailable(): T | null {
-    let minUsage = this.maximumUsage
-    let candidate = null
-    for (const item of this.readyItems) {
-      const usage = item.currentUsage()
-      if (usage === 0) return item
-      if (usage < minUsage) {
-        candidate = item
-        minUsage = usage
-      }
-    }
-    return candidate
-  }
-
-  *[Symbol.iterator]() {
-    yield* this.pendingItems
-    yield* this.readyItems
-  }
-
-  get size() {
-    return this.pendingItems.size + this.readyItems.size
-  }
-
-  maybeAvailable(item: T) {
-    /* istanbul ignore else */
-    if (item.currentUsage() < this.maximumUsage) {
-      for (const listener of this.onAvailableListeners) {
-        listener(item)
-      }
-    }
-  }
-
-  onAvailable(fn: (item: T) => void) {
-    this.onAvailableListeners.push(fn)
   }
 }
 
