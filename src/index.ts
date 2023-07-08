@@ -10,6 +10,7 @@ import {
   AsynchronouslyCreatedResource,
   AsynchronouslyCreatedResourcePool,
 } from './AsyncResource'
+import { Errors } from './errors'
 import { AsyncResource } from 'async_hooks'
 import { fileURLToPath, URL } from 'url'
 import { dirname, join, resolve } from 'path'
@@ -75,25 +76,6 @@ function onabort(abortSignal: AbortSignalAny, listener: () => void) {
     abortSignal.addEventListener('abort', listener, { once: true })
   } else {
     abortSignal.once('abort', listener)
-  }
-}
-class AbortError extends Error {
-  constructor() {
-    super('The task has been aborted')
-  }
-
-  get name() {
-    return 'AbortError'
-  }
-}
-
-class CancelError extends Error {
-  constructor() {
-    super('The task has been cancelled')
-  }
-
-  get name() {
-    return 'CancelError'
   }
 }
 
@@ -282,7 +264,7 @@ class TaskInfo extends AsyncResource implements Task {
     this.callback = callback
     this.task = task
     this.transferList = transferList
-    this.cancel = () => this.callback(new CancelError(), null)
+    this.cancel = () => this.callback(Errors.CancelError(), null)
 
     // If the task is a Transferable returned by
     // Tinypool.move(), then add it to the transferList
@@ -335,15 +317,6 @@ class TaskInfo extends AsyncResource implements Task {
 }
 
 type ResponseCallback = (response: ResponseMessage) => void
-
-const Errors = {
-  ThreadTermination: () => new Error('Terminating worker thread'),
-  FilenameNotProvided: () =>
-    new Error('filename must be provided to run() or in options object'),
-  TaskQueueAtLimit: () => new Error('Task queue is at limit'),
-  NoTaskQueueAvailable: () =>
-    new Error('No task queue available and all Workers are busy'),
-}
 
 class WorkerInfo extends AsynchronouslyCreatedResource {
   worker: Worker
@@ -826,13 +799,13 @@ class ThreadPool {
       // If the AbortSignal has an aborted property and it's truthy,
       // reject immediately.
       if ((signal as AbortSignalEventTarget).aborted) {
-        return Promise.reject(new AbortError())
+        return Promise.reject(Errors.AbortError())
       }
       taskInfo.abortListener = () => {
         // Call reject() first to make sure we always reject with the AbortError
         // if the task is aborted, not with an Error from the possible
         // thread termination below.
-        reject(new AbortError())
+        reject(Errors.AbortError())
 
         if (taskInfo.workerInfo !== null) {
           // Already running: We cancel the Worker this is running on.
