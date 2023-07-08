@@ -28,8 +28,6 @@ import {
   kRequestCountField,
   kFieldCount,
   Transferable,
-  Task,
-  TaskQueue,
   kQueueOptions,
   isTransferable,
   markMovable,
@@ -44,6 +42,7 @@ import {
   AbortSignalEventTarget,
   onabort,
 } from './abort-signal'
+import { ArrayTaskQueue, Task, TaskQueue } from './task-queue'
 
 declare global {
   namespace NodeJS {
@@ -69,35 +68,6 @@ type EnvSpecifier = typeof Worker extends {
 }
   ? T
   : never
-
-class ArrayTaskQueue implements TaskQueue {
-  tasks: Task[] = []
-
-  get size() {
-    return this.tasks.length
-  }
-
-  shift(): Task | null {
-    return this.tasks.shift() as Task
-  }
-
-  push(task: Task): void {
-    this.tasks.push(task)
-  }
-
-  remove(task: Task): void {
-    const index = this.tasks.indexOf(task)
-    assert.notStrictEqual(index, -1)
-    this.tasks.splice(index, 1)
-  }
-
-  cancel(): void {
-    while (this.tasks.length > 0) {
-      const task = this.tasks.pop()
-      task?.cancel()
-    }
-  }
-}
 
 interface Options {
   filename?: string | null
@@ -1080,6 +1050,7 @@ class Tinypool extends EventEmitterAsyncResource {
 
 const _workerId = process.__tinypool_state__?.workerId
 
+export { isTaskQueue } from './task-queue'
 export * from './common'
 export { Tinypool, Options, _workerId as workerId }
 export default Tinypool

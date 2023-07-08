@@ -69,30 +69,6 @@ export interface Transferable {
   readonly [kValue]: object
 }
 
-export interface Task {
-  readonly [kQueueOptions]: object | null
-  cancel(): void
-}
-
-export interface TaskQueue {
-  readonly size: number
-  shift(): Task | null
-  remove(task: Task): void
-  push(task: Task): void
-  cancel(): void
-}
-
-export function isTaskQueue(value: any): boolean {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'size' in value &&
-    typeof value.shift === 'function' &&
-    typeof value.remove === 'function' &&
-    typeof value.push === 'function'
-  )
-}
-
 export const kRequestCountField = 0
 export const kResponseCountField = 1
 export const kFieldCount = 2
