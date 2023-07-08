@@ -38,6 +38,12 @@ import {
   kValue,
   TinypoolData,
 } from './common'
+import {
+  AbortSignalAny,
+  AbortSignalEventEmitter,
+  AbortSignalEventTarget,
+  onabort,
+} from './abort-signal'
 
 declare global {
   namespace NodeJS {
@@ -52,32 +58,6 @@ declare global {
 }
 
 const cpuCount: number = physicalCpuCount
-
-interface AbortSignalEventTargetAddOptions {
-  once: boolean
-}
-
-interface AbortSignalEventTarget {
-  addEventListener: (
-    name: 'abort',
-    listener: () => void,
-    options?: AbortSignalEventTargetAddOptions
-  ) => void
-  removeEventListener: (name: 'abort', listener: () => void) => void
-  aborted?: boolean
-}
-interface AbortSignalEventEmitter {
-  off: (name: 'abort', listener: () => void) => void
-  once: (name: 'abort', listener: () => void) => void
-}
-type AbortSignalAny = AbortSignalEventTarget | AbortSignalEventEmitter
-function onabort(abortSignal: AbortSignalAny, listener: () => void) {
-  if ('addEventListener' in abortSignal) {
-    abortSignal.addEventListener('abort', listener, { once: true })
-  } else {
-    abortSignal.once('abort', listener)
-  }
-}
 
 type ResourceLimits = Worker extends {
   resourceLimits?: infer T
