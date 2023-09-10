@@ -754,6 +754,7 @@ class ThreadPool {
     }
 
     const message: StartupMessage = {
+      type: 'STARTUP',
       filename: this.options.filename,
       name: this.options.name,
       port: port2,

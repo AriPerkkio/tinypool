@@ -3,13 +3,18 @@ import {
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
+  ShutdownMessage,
   StartupMessage,
   TinypoolWorkerMessage,
 } from '../common'
 import { getHandler, throwInNextTick } from './utils'
 
+// Capture original process.exit in case someone overwrites it
+const exit = process.exit
+
 type IncomingMessage =
   | (StartupMessage & TinypoolWorkerMessage<'pool'>)
+  | (ShutdownMessage & TinypoolWorkerMessage<'pool'>)
   | (RequestMessage & TinypoolWorkerMessage<'port'>)
 
 type OutgoingMessage =
@@ -29,31 +34,45 @@ process.on('message', (message: IncomingMessage) => {
   if (!message || !message.__tinypool_worker_message__) return
 
   if (message.source === 'pool') {
-    const { filename, name } = message
-
-    ;(async function () {
-      if (filename !== null) {
-        await getHandler(filename, name)
-      }
-
-      process.send!(<OutgoingMessage>{
-        ready: true,
-        source: 'pool',
-        __tinypool_worker_message__: true,
-      })
-    })().catch(throwInNextTick)
-
-    return
+    return onPoolMessage(message).catch(throwInNextTick)
   }
 
   if (message.source === 'port') {
-    return onMessage(message).catch(throwInNextTick)
+    return onPortMessage(message).catch(throwInNextTick)
   }
 
   throw new Error(`Unexpected TinypoolWorkerMessage ${JSON.stringify(message)}`)
 })
 
-async function onMessage(message: IncomingMessage & { source: 'port' }) {
+async function onPoolMessage(message: IncomingMessage & { source: 'pool' }) {
+  if (message.type === 'STARTUP') {
+    const { filename, name } = message
+
+    if (filename !== null) {
+      await getHandler(filename, name)
+    }
+
+    return process.send!(<OutgoingMessage>{
+      ready: true,
+      source: 'pool',
+      __tinypool_worker_message__: true,
+    })
+  }
+
+  if (message.type === 'SHUTDOWN') {
+    // Restore process.exit back to original one
+    process.exit = exit
+    process.removeAllListeners('message')
+
+    return
+  }
+
+  throw new Error(
+    `Unexpected TinypoolWorkerMessage for pool ${JSON.stringify(message)}`
+  )
+}
+
+async function onPortMessage(message: IncomingMessage & { source: 'port' }) {
   const { taskId, task, filename, name } = message
   let response: OutgoingMessage & Pick<typeof message, 'source'>
 

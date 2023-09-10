@@ -48,6 +48,11 @@ export interface StartupMessage {
   port: MessagePort
   sharedBuffer: Int32Array
   useAtomics: boolean
+  type: 'STARTUP'
+}
+
+export interface ShutdownMessage {
+  type: 'SHUTDOWN'
 }
 
 export interface RequestMessage {

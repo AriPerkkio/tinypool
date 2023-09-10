@@ -8,7 +8,7 @@ import {
   TinypoolWorkerMessage,
 } from '../common'
 
-const __tinypool_worker_message__ = 'true'
+const __tinypool_worker_message__ = true
 
 export default class ProcessWorker implements TinypoolWorker {
   name = 'ProcessWorker'
@@ -17,16 +17,44 @@ export default class ProcessWorker implements TinypoolWorker {
   threadId!: number
   port?: MessagePort
   channel?: TinypoolChannel
+  waitForExit!: Promise<void>
+  isTerminated = false
 
   initialize(options: Parameters<TinypoolWorker['initialize']>[0]) {
     const __dirname = dirname(fileURLToPath(import.meta.url))
 
     this.process = fork(resolve(__dirname, './entry/process.js'), options)
     this.threadId = this.process.pid!
+
+    this.process.on('exit', this.onUnexpectedExit)
+    this.waitForExit = new Promise((r) => this.process.on('exit', r))
+    this.waitForExit.then(() => (this.isTerminated = true))
+  }
+
+  onUnexpectedExit = () => {
+    this.process.emit('error', new Error('Worker exited unexpectedly'))
   }
 
   async terminate() {
-    return this.process.kill()
+    this.process.off('exit', this.onUnexpectedExit)
+
+    // TODO Re-check connected-part
+    if (this.isTerminated || !this.process.connected) return
+
+    this.process.send(<TinypoolWorkerMessage<'pool'>>{
+      source: 'pool',
+      __tinypool_worker_message__,
+      type: 'SHUTDOWN',
+    })
+
+    const sigtermTimeout = setTimeout(() => this.process.kill('SIGTERM'), 150)
+    const sigkillTimeout = setTimeout(() => this.process.kill('SIGKILL'), 300)
+
+    await this.waitForExit
+
+    clearTimeout(sigtermTimeout)
+    clearTimeout(sigkillTimeout)
+    this.port?.close()
   }
 
   setChannel(channel: TinypoolChannel) {
@@ -65,6 +93,11 @@ export default class ProcessWorker implements TinypoolWorker {
 
   on(event: string, callback: (...args: any[]) => void) {
     return this.process.on(event, (data: TinypoolWorkerMessage) => {
+      // All errors should be forwarded to the pool
+      if (event === 'error') {
+        return callback(data)
+      }
+
       if (!data || !data.__tinypool_worker_message__) {
         return this.channel?.postMessage(data)
       }
